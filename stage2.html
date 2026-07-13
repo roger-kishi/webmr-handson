@@ -6,8 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <!-- animation-mixer (glTF animation playback) comes from aframe-extras -->
-  <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v7.0.0/dist/aframe-extras.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
@@ -22,7 +20,6 @@
     #status { color: #fd6; }
     #model-info {
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
-      max-height: 30vh; overflow-y: auto;
       background: rgba(0, 0, 0, 0.78); color: #6f6;
       font: 13px/1.5 monospace; padding: 8px 12px;
       padding-bottom: calc(8px + env(safe-area-inset-bottom));
@@ -34,35 +31,28 @@
   <script>
     /* fit-model
      *
-     * Makes ANY .glb work without you having to know anything about it first.
+     * Makes any .glb work without you having to know anything about it first.
      *
-     * Two things differ wildly between models, and both break a hard-coded setup:
+     * Models come in whatever units their author felt like using. The cat below
+     * is 84 units across; a Khronos model can be 155; a character from another
+     * site is 1.9. A single hard-coded scale factor would make one of them
+     * microscopic and another the size of a building. So you do not give a scale
+     * factor at all: you say how big you want it to END UP, in marker widths,
+     * and this measures the model and works the rest out.
      *
-     *   - SIZE. Models come in whatever units their author used. The Khronos fox
-     *     is 155 units long; a Quaternius character is 1.8. A scale that suits
-     *     one makes the other either microscopic or the size of a building. So
-     *     instead of a raw scale factor, you say how big you want it to end up,
-     *     in MARKER WIDTHS, and this measures the model and works out the rest.
-     *
-     *   - CLIP NAMES. One model calls its animation "Run", another calls the
-     *     same thing "CharacterArmature|Run". So a clip is matched loosely: the
-     *     part after the "|" is enough.
-     *
-     * Whatever the model turns out to contain is printed at the bottom of the
-     * screen. You are on a phone; you have no console. If a name does not match,
-     * this says so instead of silently doing nothing.
+     * What it found is printed at the bottom of the screen. You are on a phone;
+     * you have no console.
      */
     AFRAME.registerComponent('fit-model', {
       schema: {
-        size: { type: 'number', default: 0.6 },  // biggest dimension, in marker widths
-        clip: { type: 'string', default: '' }    // empty = play the first animation
+        size: { type: 'number', default: 0.6 }  // biggest dimension, in marker widths
       },
 
       init: function () {
         this.info = document.querySelector('#model-info');
         this.el.addEventListener('model-loaded', (e) => this.onLoad(e.detail.model));
         this.el.addEventListener('model-error', () => {
-          this.report('could not load the model.\ncheck the file name and that it is really in assets/', true);
+          this.report('could not load the model.\ncheck the file name, and that it really is in assets/', true);
         });
       },
 
@@ -107,60 +97,20 @@
           return;
         }
 
-        const factor = this.data.size / biggest;
-        this.el.object3D.scale.setScalar(factor);
+        this.el.object3D.scale.setScalar(this.data.size / biggest);
 
-        // Centre it on the marker and stand it on the surface rather than
-        // half-sinking into it.
+        // Centre it on the marker and stand it on the surface, rather than
+        // letting it half-sink into the paper.
         const centre = new THREE.Vector3();
         box.getCenter(centre);
         model.position.x -= centre.x;
         model.position.z -= centre.z;
         model.position.y -= box.min.y;
 
-        const clips = model.animations;
-        const lines = [
-          'model is ' + biggest.toFixed(2) + ' units across -> scaled by ' + factor.toFixed(4),
-          'to be ' + this.data.size + ' marker widths.',
-          ''
-        ];
-
-        // A model with no animation is completely normal -- most of the ones on
-        // poly.pizza are still models. That is not a failure, and it is not the
-        // end of the exercise: animate it yourself, the way you did in Stage 1.
-        if (!clips.length) {
-          this.report(lines.join('\n') +
-            'this model has NO built-in animation.\n' +
-            'that is fine and very common. move it yourself instead:\n\n' +
-            '  animation="property: rotation; to: 0 360 0;\n' +
-            '             dur: 4000; loop: true; easing: linear"\n\n' +
-            'add that to the model entity in stage2.html.');
-          return;
-        }
-
-        // Clip names are whatever the model's author felt like. "Run" here is
-        // "CharacterArmature|Run" there, and models exported without names get
-        // called animation_0. So match loosely, and if nothing matches, still
-        // play SOMETHING and say what happened -- swapping the model should
-        // never leave you staring at a frozen figure with no explanation.
-        const names = clips.map((c) => c.name);
-        const wanted = this.data.clip.trim();
-        const match = !wanted ? names[0] : (
-          names.find((n) => n === wanted) ||
-          names.find((n) => n.split('|').pop() === wanted) ||
-          names.find((n) => n.toLowerCase().includes(wanted.toLowerCase()))
-        );
-
-        this.el.setAttribute('animation-mixer', { clip: match || names[0] });
-
         this.report(
-          lines.join('\n') +
-          (match
-            ? 'playing: ' + match
-            : 'there is no clip called "' + wanted + '" in this model.\n' +
-              'playing "' + names[0] + '" instead. pick a real one below.') +
-          '\n\nall ' + clips.length + ' clip(s) in this model:\n  ' + names.join('\n  '),
-          !match
+          'this model is ' + biggest.toFixed(1) + ' units across.\n' +
+          'scaled by ' + (this.data.size / biggest).toFixed(4) +
+          ' to be ' + this.data.size + ' marker widths.'
         );
       }
     });
@@ -193,42 +143,36 @@
            marker instead of lying flat in it. -->
       <a-entity rotation="90 0 0">
 
-        <!-- ==== TASK 1: play a different animation ====
-             The bottom of the screen lists every clip this model has. Pick one
-             and put it in clip: below. It has 24 of them.
-        -->
         <a-entity
-          gltf-model="./assets/Adventurer.glb"
-          fit-model="size: 0.6; clip: Run">
+          gltf-model="./assets/cat.glb"
+          fit-model="size: 0.6">
         </a-entity>
 
-        <!-- ==== TASK 2: size ====
+        <!-- ==== TASK 1: size ====
              size: is in MARKER WIDTHS. 1.0 means as wide as the marker itself.
-             Try 0.2, then 2.0. Why is that a better thing to ask for than a raw
-             scale factor? (Hint: this model is 1.9 units tall. The Khronos fox
-             is 155. What scale factor would suit BOTH?)
+             Try 0.2, then 2.0.
+             Why is that a better thing to ask for than a raw scale factor?
+             (Hint: the bottom of the screen tells you how big this model is in
+             its own units. Another model is 1.9. What single scale factor would
+             suit both?)
 
-             ==== TASK 3: bring your own model ====
-             Get a .glb, then in YOUR fork on GitHub open the assets folder and
-             use  Add file -> Upload files.  Put its name in gltf-model above.
+             ==== TASK 2: rotation ====
+             Delete rotation="90 0 0" from the wrapper above.
+             Where does the model go, and why?
+
+             ==== TASK 3: make it move ====
+             The model just sits there. Give it the same treatment as the box in
+             Stage 1 -- add this to the <a-entity> above:
+
+               animation="property: rotation; to: 0 360 0;
+                          dur: 4000; loop: true; easing: linear"
+
+             ==== TASK 4: bring your own model ====
+             Get a .glb from https://poly.pizza (search for anything, it is free).
+             Then in YOUR fork on GitHub, open the assets folder and use
+                Add file -> Upload files
+             and put the file name in gltf-model above.
              Nothing else needs to change: it gets measured and sized for you.
-
-             WITH animation, so you can still do Task 1:
-               https://quaternius.com                  (free packs of characters
-                                                        and animals, animated)
-               https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models
-                                                       (Fox, BrainStem, CesiumMan)
-
-             STILL models, no animation:
-               https://poly.pizza                      (search for anything)
-
-             A still model is not a failure. If it has no animation the page
-             says so, and you move it yourself with an animation= attribute,
-             exactly like the spinning box in Stage 1.
-
-             ==== TASK 4: rotation ====
-             Delete rotation="90 0 0" from the wrapper above. Where does the
-             model go, and why?
         -->
 
       </a-entity>
